@@ -123,11 +123,44 @@ class RandomNetworkGenerator:
         return graph
 
     def _sample_attributes(self, graph: nx.Graph) -> Tuple[dict, dict]:
-        """TODO: Gerçekçi attribute dağılımlarını tanımla."""
-        node_attrs = {n: {"processing_delay": 0.0, "reliability": 0.999} for n in graph.nodes}
-        edge_attrs = {
-            (u, v): {"bandwidth": 1.0, "delay": 1.0, "reliability": 0.999}
-            for u, v in graph.edges
-        }
+        """
+        PDF gereksinimlerine göre gerçekçi attribute dağılımları üretir.
+
+        PDF Node Özellikleri (Bölüm 2.2):
+        - ProcessingDelay: [0.5 ms - 2.0 ms] arası rastgele
+        - NodeReliability: [0.95, 0.999] arası rastgele
+
+        PDF Link Özellikleri (Bölüm 2.3):
+        - Bandwidth: [100 Mbps, 1000 Mbps] arası rastgele
+        - LinkDelay: [3 ms, 15 ms] arası rastgele
+        - LinkReliability: [0.95, 0.999] arası rastgele
+        """
+        import random
+
+        # Node attributes (Issue #2) - PDF Section 2.2
+        node_attrs = {}
+        for n in graph.nodes:
+            # ProcessingDelay: [0.5 ms - 2.0 ms] arası uniform rastgele
+            processing_delay = random.uniform(0.5, 2.0)
+            # NodeReliability: [0.95, 0.999] arası uniform rastgele
+            node_reliability = random.uniform(0.95, 0.999)
+            node_attrs[n] = {
+                "processing_delay": round(processing_delay, 2),
+                "reliability": round(node_reliability, 4)
+            }
+
+        # Edge attributes (Issue #3 - şimdilik placeholder, sonra güncellenecek)
+        edge_attrs = {}
+        for u, v in graph.edges:
+            bandwidth = random.uniform(100, 1000)  # [100-1000 Mbps] - PDF
+            link_delay = random.uniform(3, 15)      # [3-15 ms] - PDF
+            link_reliability = random.uniform(0.95, 0.999)  # [0.95-0.999] - PDF
+            edge_attrs[(u, v)] = {
+                "bandwidth": round(bandwidth, 1),
+                "delay": round(link_delay, 2),
+                "reliability": round(link_reliability, 4)
+            }
+
+        logger.debug(f"Sampled attributes for {len(node_attrs)} nodes and {len(edge_attrs)} edges")
         return node_attrs, edge_attrs
 

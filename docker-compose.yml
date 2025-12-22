@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # Development mode - with volume mounts for hot reload
+  routing-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bsm307-routing-dev
+    volumes:
+      - .:/app
+      - /app/.venv  # Exclude venv from mount
+    environment:
+      - PYTHONPATH=/app
+      - MPLBACKEND=Agg  # Headless mode (no GUI)
+      - EXPERIMENT_SEED=42
+      - NUM_NODES=250
+      - EDGE_PROB=0.4
+    command: python demo.py
+    stdin_open: true
+    tty: true
+    profiles:
+      - dev
+
+  # Production mode - optimized build
+  routing-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bsm307-routing-prod
+    environment:
+      - PYTHONPATH=/app
+      - MPLBACKEND=Agg
+      - EXPERIMENT_SEED=42
+      - NUM_NODES=250
+      - EDGE_PROB=0.4
+    command: python demo.py
+    profiles:
+      - prod
+
+  # GUI mode - with X11 forwarding (requires XQuartz on Mac)
+  routing-gui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bsm307-routing-gui
+    volumes:
+      - .:/app
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    environment:
+      - PYTHONPATH=/app
+      - DISPLAY=host.docker.internal:0
+      - MPLBACKEND=TkAgg  # GUI backend
+      - EXPERIMENT_SEED=42
+      - NUM_NODES=250
+      - EDGE_PROB=0.4
+    network_mode: host
+    command: python demo.py
+    profiles:
+      - gui
+

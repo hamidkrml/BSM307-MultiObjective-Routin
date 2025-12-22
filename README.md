@@ -21,6 +21,8 @@ Sistem Mimarisi
 - `tests`: Birim testleri (metrikler, üretici, operatörler vb.).
 
 Kurulum
+
+### Yerel Kurulum
 1) Python 3.10+ kullanın.
 2) Sanal ortam oluşturun ve bağımlılıkları kurun:
    ```
@@ -28,16 +30,61 @@ Kurulum
    source .venv/bin/activate  # Windows: .venv\Scripts\activate
    pip install -r requirements.txt
    ```
-3) Proje kökünü `PYTHONPATH`’a ekleyin (geliştirme kolaylığı):
+3) Proje kökünü `PYTHONPATH`'a ekleyin (geliştirme kolaylığı):
    ```
    export PYTHONPATH=$(pwd)
    ```
 
+### Docker Kurulumu (Önerilen)
+1) Docker Desktop kurulumu:
+   ```bash
+   # Mac (Homebrew)
+   brew install --cask docker
+   
+   # Docker Desktop'u başlat ve çalıştığını kontrol et
+   docker --version
+   ```
+
+2) Docker ile çalıştır:
+   ```bash
+   # Development mode (volume mount ile)
+   docker-compose --profile dev up
+   
+   # Production mode
+   docker-compose --profile prod up
+   
+   # GUI mode (XQuartz gerekli - Mac)
+   docker-compose --profile gui up
+   ```
+
+3) Detaylı Docker dokümantasyonu için: `docker/README.md`
+
 Örnek Çalışma Akışı
+
+### Docker ile (En Kolay)
+```bash
+# Demo script'ini çalıştır
+docker-compose --profile dev up
+
+# Veya manuel
+docker build -t bsm307-routing .
+docker run --rm bsm307-routing
+```
+
+### Yerel Python ile
 - Ağ oluştur: `RandomNetworkGenerator.generate()`.
 - Metrikleri hesapla: `delay`, `reliability`, `resource_cost` modüllerini kullan.
 - Algoritma çalıştır: `GeneticAlgorithm`, `AntColonyOptimizer`, `QLearningRouter`, `SimulatedAnnealingRouter`.
 - Görselleştir: `src/ui/app.py` veya `graph_visualizer.py`.
+
+### Demo Script
+```bash
+# Docker içinde
+python demo.py
+
+# Yerel olarak
+python demo.py
+```
 
 Deney Talimatları
 - `experiments/` altında 20 farklı (S, D, B) senaryosu üret; her algoritmayı 5 kez çalıştır.

@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+test_*.py
+tests/
+
+# Data and outputs (outputs hariç, çünkü container içinde oluşturulacak)
+data/*.png
+data/*.jpg
+data/*.pdf
+data/*.csv
+data/*.json
+# Ama data/ klasörünün kendisini ignore etme (container içinde oluşturulacak)
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+docs/diagrams/ui-screenshots/
+
+# Experiments
+experiments/results/
+experiments/*.png
+experiments/*.csv
+

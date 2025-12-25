@@ -29,7 +29,42 @@ class PathValidator:
         return True
 
     def has_capacity(self, path: Iterable[int], bandwidth: float) -> bool:
-        """TODO: Kenar kapasitesi kontrolü."""
-        logger.debug("Capacity check placeholder for bandwidth=%s", bandwidth)
+        """
+        Path üzerindeki tüm edge'lerin istenen bandwidth'i karşılayıp karşılamadığını kontrol eder.
+        
+        Args:
+            path: Kontrol edilecek path (düğüm listesi)
+            bandwidth: İstenen minimum bandwidth (Mbps)
+            
+        Returns:
+            True eğer tüm edge'ler yeterli kapasiteye sahip, False aksi halde
+        """
+        path_list = list(path)
+        
+        if len(path_list) <= 1:
+            logger.debug("Path too short for capacity check: %s", path_list)
+            return True
+        
+        for i in range(len(path_list) - 1):
+            u = path_list[i]
+            v = path_list[i + 1]
+            
+            if not self.graph.has_edge(u, v):
+                logger.warning("Edge (%s, %s) does not exist in graph", u, v)
+                return False
+            
+            edge_bandwidth = self.graph.edges[u, v].get("bandwidth", 0.0)
+            
+            if edge_bandwidth < bandwidth:
+                logger.debug(
+                    "Edge (%s, %s) has insufficient bandwidth: %.1f < %.1f Mbps",
+                    u, v, edge_bandwidth, bandwidth
+                )
+                return False
+        
+        logger.debug(
+            "Path has sufficient capacity for bandwidth=%.1f Mbps: %s",
+            bandwidth, path_list
+        )
         return True
 

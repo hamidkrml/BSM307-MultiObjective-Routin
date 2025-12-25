@@ -24,6 +24,7 @@ from src.routing.path_validator import PathValidator
 from src.metrics.delay import total_delay
 from src.metrics.reliability import reliability_cost
 from src.metrics.resource_cost import bandwidth_cost, weighted_sum
+from src.algorithms.ga.genetic_algorithm import GeneticAlgorithm
 from src.ui.graph_visualizer import draw_graph
 from src.utils.logger import get_logger
 
@@ -93,9 +94,18 @@ def main():
             print(f"   ❌ {source} → {target} arasında yol bulunamadı!")
             return 1
         
-        # Shortest path (şimdilik basit algoritma)
-        path = nx.shortest_path(graph, source, target)
-        print(f"   ✅ Path bulundu: {len(path)-1} adım")
+        # GA ile path bul (Issue #9-12)
+        print("   🔄 GA algoritması ile path aranıyor...")
+        ga = GeneticAlgorithm(
+            graph=graph,
+            source=source,
+            target=target,
+            weights=(0.4, 0.3, 0.3),
+            population_size=20,
+            seed=seed
+        )
+        path, ga_fitness = ga.run(generations=10)
+        print(f"   ✅ GA ile path bulundu: {len(path)-1} adım (fitness: {ga_fitness:.4f})")
         print(f"      Path: {' → '.join(map(str, path[:10]))}{'...' if len(path) > 10 else ''}")
         
         # 4. Path doğrulama

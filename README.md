@@ -55,6 +55,9 @@ Kurulum
    
    # GUI mode (XQuartz gerekli - Mac)
    docker-compose --profile gui up
+   
+   # Interactive UI mode (XQuartz gerekli - Mac)
+   docker-compose --profile ui up
    ```
 
 3) Detaylı Docker dokümantasyonu için: `docker/README.md`

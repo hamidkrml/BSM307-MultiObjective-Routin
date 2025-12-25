@@ -5,8 +5,12 @@ BSM307 - Güz 2025
 Issue #19, #20, #21, #22: Complete Python UI implementation
 """
 
+import os
 import matplotlib
-matplotlib.use("TkAgg")  # Interactive backend
+
+# Docker uyumluluğu: Backend seçimi environment variable'dan
+backend = os.environ.get("MPLBACKEND", "TkAgg")
+matplotlib.use(backend)
 
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, TextBox, Button
@@ -316,6 +320,13 @@ class RoutingUI:
     
     def run(self):
         """Start the interactive UI."""
+        # Docker uyumluluğu: Backend kontrolü
+        backend = os.environ.get("MPLBACKEND", "TkAgg")
+        if backend == "Agg":
+            logger.warning("Headless mode (Agg) detected. UI requires GUI backend.")
+            logger.warning("For Docker GUI mode, use: docker-compose --profile ui up")
+            return
+        
         self.setup_ui()
         self.create_controls()
         self.draw_network()

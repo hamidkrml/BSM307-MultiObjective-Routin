@@ -59,3 +59,24 @@ services:
     profiles:
       - gui
 
+  # UI mode - Interactive matplotlib UI
+  routing-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bsm307-routing-ui
+    volumes:
+      - .:/app
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    environment:
+      - PYTHONPATH=/app
+      - DISPLAY=host.docker.internal:0
+      - MPLBACKEND=TkAgg  # GUI backend for interactive UI
+      - EXPERIMENT_SEED=42
+      - NUM_NODES=250
+      - EDGE_PROB=0.4
+    network_mode: host
+    command: python run_ui.py
+    profiles:
+      - ui
+

@@ -20,6 +20,12 @@ case "$MODE" in
         xhost +localhost 2>/dev/null || echo "⚠️  xhost komutu çalışmadı, devam ediliyor..."
         docker-compose --profile gui up
         ;;
+    ui)
+        echo "🚀 Interactive UI mode başlatılıyor..."
+        echo "⚠️  XQuartz'ın çalıştığından ve 'Allow network connections' aktif olduğundan emin ol!"
+        xhost +localhost 2>/dev/null || echo "⚠️  xhost komutu çalışmadı, devam ediliyor..."
+        docker-compose --profile ui up
+        ;;
     build)
         echo "🔨 Docker image build ediliyor..."
         docker-compose build
@@ -36,6 +42,7 @@ case "$MODE" in
         echo "  dev   - Development mode (volume mount, hot reload)"
         echo "  prod  - Production mode (optimized)"
         echo "  gui   - GUI mode (XQuartz gerekli)"
+        echo "  ui    - Interactive UI mode (XQuartz gerekli)"
         echo "  build - Sadece build et"
         echo "  clean - Container'ları temizle"
         exit 1

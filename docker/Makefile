@@ -7,6 +7,7 @@ help:
 	@echo "  make dev    - Development mode başlat"
 	@echo "  make prod   - Production mode başlat"
 	@echo "  make gui    - GUI mode başlat (XQuartz gerekli)"
+	@echo "  make ui     - Interactive UI mode başlat (XQuartz gerekli)"
 	@echo "  make build  - Docker image build et"
 	@echo "  make clean  - Container'ları temizle"
 	@echo "  make test   - Demo script'i test et"
@@ -21,6 +22,11 @@ gui:
 	@echo "⚠️  XQuartz'ın çalıştığından emin ol!"
 	xhost +localhost 2>/dev/null || true
 	docker-compose --profile gui up
+
+ui:
+	@echo "⚠️  XQuartz'ın çalıştığından emin ol!"
+	xhost +localhost 2>/dev/null || true
+	docker-compose --profile ui up
 
 build:
 	docker-compose build

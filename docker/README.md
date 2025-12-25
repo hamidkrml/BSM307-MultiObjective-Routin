@@ -65,6 +65,24 @@ xhost +localhost
 docker-compose --profile gui up
 ```
 
+### UI Mode (Interactive Matplotlib UI)
+```bash
+# XQuartz'ı başlat ve network connections'ı aktif et
+xhost +localhost
+
+# Interactive UI'yi başlat
+docker-compose --profile ui up
+
+# Veya manuel
+docker run --rm \
+  -e DISPLAY=host.docker.internal:0 \
+  -e MPLBACKEND=TkAgg \
+  -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+  --network host \
+  -v $(pwd):/app \
+  bsm307-routing python run_ui.py
+```
+
 ### Manuel Docker Komutları
 ```bash
 # Build

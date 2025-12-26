@@ -1,6 +1,3 @@
-# Docker ignore file
-# Bu dosyalar Docker image'e kopyalanmaz
-
 # Python
 __pycache__/
 *.py[cod]
@@ -22,21 +19,17 @@ env/
 *.swp
 *.swo
 *~
+.DS_Store
 
-# Git
-.git/
-.gitignore
+# Jupyter Notebook
+.ipynb_checkpoints
 
-# Documentation (build edilmiş)
-docs/_build/
-docs/.doctrees/
-
-# Test coverage
+# pytest
+.pytest_cache/
 .coverage
 htmlcov/
-.pytest_cache/
 
-# Results (mount edilir, image'e gerek yok)
+# Experiment results (generated files)
 experiments/results/*.json
 experiments/results/*.csv
 experiments/plots/*.png
@@ -50,7 +43,11 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Docker
-Dockerfile
-docker-compose.yml
-.dockerignore
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# Data files (keep directory structure, but ignore large files if needed)
+# data/demo_graph.png  # Uncomment if you want to ignore this
+

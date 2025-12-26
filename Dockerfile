@@ -27,6 +27,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy project files
 COPY . .
 
+# Python cache temizle (build sırasında)
+RUN find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
+    find . -name "*.pyc" -delete 2>/dev/null || true && \
+    find . -name "*.pyo" -delete 2>/dev/null || true
+
 # Set PYTHONPATH
 ENV PYTHONPATH=/app
 

@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, TextBox, Button
 import networkx as nx
 from typing import Optional, Tuple
+import threading
 
 from ..network.generator import RandomNetworkGenerator
 from ..algorithms.ga.genetic_algorithm import GeneticAlgorithm
@@ -26,6 +27,8 @@ from ..metrics.resource_cost import bandwidth_cost, weighted_sum
 from ..routing.path_validator import PathValidator
 from ..utils.logger import get_logger
 from .graph_visualizer import draw_graph
+
+# Experiment runner import (will be imported when needed to avoid circular imports)
 
 logger = get_logger(__name__)
 
@@ -60,6 +63,12 @@ class RoutingUI:
         self.required_bandwidth = 500.0
         self.algorithm = "GA"  # "GA" or "ACO"
         
+        # Experiment state
+        self.experiment_running = False
+        self.experiment_progress = ""
+        self.num_scenarios = 20
+        self.num_repetitions = 5
+        
         logger.info("Initialized RoutingUI with graph: %s nodes, %s edges", 
                    graph.number_of_nodes(), graph.number_of_edges())
     
@@ -67,10 +76,10 @@ class RoutingUI:
         """Issue #19: Setup matplotlib interactive mode and figure."""
         plt.ion()  # Interactive mode
         
-        self.fig, self.ax = plt.subplots(figsize=(14, 10))
-        plt.subplots_adjust(left=0.1, bottom=0.35, right=0.95, top=0.95)
+        self.fig, self.ax = plt.subplots(figsize=(16, 10))
+        plt.subplots_adjust(left=0.1, bottom=0.40, right=0.95, top=0.95)  # Butonlar için daha fazla alan
         
-        self.fig.suptitle("BSM307 Multi-Objective Routing - Interactive UI", fontsize=16, fontweight="bold")
+        self.fig.suptitle("BSM307 Çok Amaçlı Yönlendirme - Etkileşimli Arayüz", fontsize=16, fontweight="bold")
         
         logger.info("UI setup complete")
     
@@ -121,12 +130,12 @@ class RoutingUI:
             )
         
         # Title with metrics
-        title = f"Network: {self.graph.number_of_nodes()} nodes, {self.graph.number_of_edges()} edges"
+        title = f"Ağ: {self.graph.number_of_nodes()} düğüm, {self.graph.number_of_edges()} kenar"
         if path:
-            title += f"\nPath: {self.source} → {self.target} ({len(path)-1} hops)"
+            title += f"\nYol: {self.source} → {self.target} ({len(path)-1} atlamalı)"
             if self.current_metrics:
-                title += f" | Delay: {self.current_metrics['delay']:.2f}ms"
-                title += f" | Cost: {self.current_metrics['weighted']:.4f}"
+                title += f" | Gecikme: {self.current_metrics['delay']:.2f}ms"
+                title += f" | Maliyet: {self.current_metrics['weighted']:.4f}"
         self.ax.set_title(title, fontsize=12)
         self.ax.axis("off")
         
@@ -137,47 +146,68 @@ class RoutingUI:
         """Issue #21: Create parameter controls (sliders, text boxes, buttons)."""
         # Source input
         ax_source = plt.axes([0.1, 0.28, 0.15, 0.03])
-        self.text_source = TextBox(ax_source, "Source: ", initial=str(self.source))
+        self.text_source = TextBox(ax_source, "Kaynak: ", initial=str(self.source))
         self.text_source.on_submit(self.update_source)
         
         # Target input
         ax_target = plt.axes([0.3, 0.28, 0.15, 0.03])
-        self.text_target = TextBox(ax_target, "Target: ", initial=str(self.target))
+        self.text_target = TextBox(ax_target, "Hedef: ", initial=str(self.target))
         self.text_target.on_submit(self.update_target)
         
         # Bandwidth input
         ax_bw = plt.axes([0.5, 0.28, 0.15, 0.03])
-        self.text_bandwidth = TextBox(ax_bw, "Bandwidth (Mbps): ", initial=str(self.required_bandwidth))
+        self.text_bandwidth = TextBox(ax_bw, "Bant Genişliği (Mbps): ", initial=str(self.required_bandwidth))
         self.text_bandwidth.on_submit(self.update_bandwidth)
         
         # Algorithm selection (simplified - text box)
         ax_algo = plt.axes([0.7, 0.28, 0.15, 0.03])
-        self.text_algorithm = TextBox(ax_algo, "Algorithm (GA/ACO): ", initial=self.algorithm)
+        self.text_algorithm = TextBox(ax_algo, "Algoritma (GA/ACO): ", initial=self.algorithm)
         self.text_algorithm.on_submit(self.update_algorithm)
         
         # Weight sliders
         ax_delay = plt.axes([0.1, 0.20, 0.35, 0.03])
-        self.slider_delay = Slider(ax_delay, "Delay Weight", 0.0, 1.0, valinit=self.weight_delay, valstep=0.1)
+        self.slider_delay = Slider(ax_delay, "Gecikme Ağırlığı", 0.0, 1.0, valinit=self.weight_delay, valstep=0.1)
         self.slider_delay.on_changed(self.update_weights)
         
         ax_rel = plt.axes([0.1, 0.16, 0.35, 0.03])
-        self.slider_reliability = Slider(ax_rel, "Reliability Weight", 0.0, 1.0, valinit=self.weight_reliability, valstep=0.1)
+        self.slider_reliability = Slider(ax_rel, "Güvenilirlik Ağırlığı", 0.0, 1.0, valinit=self.weight_reliability, valstep=0.1)
         self.slider_reliability.on_changed(self.update_weights)
         
         ax_res = plt.axes([0.1, 0.12, 0.35, 0.03])
-        self.slider_resource = Slider(ax_res, "Resource Weight", 0.0, 1.0, valinit=self.weight_resource, valstep=0.1)
+        self.slider_resource = Slider(ax_res, "Kaynak Ağırlığı", 0.0, 1.0, valinit=self.weight_resource, valstep=0.1)
         self.slider_resource.on_changed(self.update_weights)
         
         # Calculate button
-        ax_calc = plt.axes([0.5, 0.12, 0.2, 0.05])
-        self.button_calc = Button(ax_calc, "Calculate Path")
+        ax_calc = plt.axes([0.5, 0.15, 0.15, 0.04])
+        self.button_calc = Button(ax_calc, "Yol Hesapla")
         self.button_calc.on_clicked(self.calculate_path)
         
+        # Experiment controls section
+        # Scenario count input
+        ax_exp_scenarios = plt.axes([0.5, 0.10, 0.12, 0.025])
+        self.text_exp_scenarios = TextBox(ax_exp_scenarios, "Senaryolar: ", initial=str(self.num_scenarios))
+        self.text_exp_scenarios.on_submit(self.update_exp_scenarios)
+        
+        # Repetitions input
+        ax_exp_reps = plt.axes([0.63, 0.10, 0.12, 0.025])
+        self.text_exp_reps = TextBox(ax_exp_reps, "Tekrarlar: ", initial=str(self.num_repetitions))
+        self.text_exp_reps.on_submit(self.update_exp_reps)
+        
+        # Run Experiment button (inline - mevcut UI içinde)
+        ax_exp_run = plt.axes([0.76, 0.10, 0.12, 0.04])
+        self.button_exp_run = Button(ax_exp_run, "Deneyi Çalıştır", color="lightgreen")
+        self.button_exp_run.on_clicked(self.run_experiment)
+        
+        # Experiment UI butonu (ayrı UI'ye geçiş) - Daha görünür konum
+        ax_exp_ui = plt.axes([0.7, 0.18, 0.25, 0.05])
+        self.button_exp_ui = Button(ax_exp_ui, "🚀 Experiment UI (20 Senaryo Test)", color="lightblue")
+        self.button_exp_ui.on_clicked(self.open_experiment_ui)
+        
         # Results text area (simulated with text)
-        self.ax_results = plt.axes([0.5, 0.02, 0.45, 0.08])
+        self.ax_results = plt.axes([0.5, 0.02, 0.45, 0.06])
         self.ax_results.axis("off")
-        self.ax_results.text(0.05, 0.5, "Click 'Calculate Path' to find route", 
-                            fontsize=10, verticalalignment="center")
+        self.ax_results.text(0.05, 0.5, "Yol bulmak için 'Yol Hesapla'ya tıklayın", 
+                            fontsize=9, verticalalignment="center")
         
         logger.info("Controls created")
     
@@ -216,6 +246,22 @@ class RoutingUI:
         else:
             logger.warning("Invalid algorithm: %s (use GA or ACO)", text)
     
+    def update_exp_scenarios(self, text: str):
+        """Update experiment scenario count."""
+        try:
+            self.num_scenarios = int(text)
+            logger.debug("Experiment scenarios updated to: %s", self.num_scenarios)
+        except ValueError:
+            logger.warning("Invalid scenario count: %s", text)
+    
+    def update_exp_reps(self, text: str):
+        """Update experiment repetitions."""
+        try:
+            self.num_repetitions = int(text)
+            logger.debug("Experiment repetitions updated to: %s", self.num_repetitions)
+        except ValueError:
+            logger.warning("Invalid repetitions: %s", text)
+    
     def update_weights(self, val: float):
         """Update weight values from sliders."""
         self.weight_delay = self.slider_delay.val
@@ -250,7 +296,7 @@ class RoutingUI:
         if not nx.has_path(self.graph, self.source, self.target):
             self.ax_results.clear()
             self.ax_results.axis("off")
-            self.ax_results.text(0.05, 0.5, f"❌ No path between {self.source} and {self.target}",
+            self.ax_results.text(0.05, 0.5, f"❌ {self.source} ve {self.target} arasında yol yok",
                                fontsize=10, color="red", verticalalignment="center")
             plt.draw()
             return
@@ -299,11 +345,11 @@ class RoutingUI:
             # Update results display
             self.ax_results.clear()
             self.ax_results.axis("off")
-            results_text = f"✅ Path Found ({self.algorithm})\n"
-            results_text += f"Path: {' → '.join(map(str, path[:8]))}{'...' if len(path) > 8 else ''}\n"
-            results_text += f"Length: {len(path)-1} hops\n"
-            results_text += f"Delay: {delay:.2f} ms | Rel Cost: {rel_cost:.4f} | Res Cost: {res_cost:.4f}\n"
-            results_text += f"Weighted Cost: {cost:.4f}"
+            results_text = f"✅ Yol Bulundu ({self.algorithm})\n"
+            results_text += f"Yol: {' → '.join(map(str, path[:8]))}{'...' if len(path) > 8 else ''}\n"
+            results_text += f"Uzunluk: {len(path)-1} atlamalı\n"
+            results_text += f"Gecikme: {delay:.2f} ms | Güvenilirlik Maliyeti: {rel_cost:.4f} | Kaynak Maliyeti: {res_cost:.4f}\n"
+            results_text += f"Ağırlıklı Maliyet: {cost:.4f}"
             self.ax_results.text(0.05, 0.5, results_text, fontsize=9, 
                                 verticalalignment="center", family="monospace")
             
@@ -314,9 +360,130 @@ class RoutingUI:
             logger.error("Error calculating path: %s", e, exc_info=True)
             self.ax_results.clear()
             self.ax_results.axis("off")
-            self.ax_results.text(0.05, 0.5, f"❌ Error: {str(e)}",
+            self.ax_results.text(0.05, 0.5, f"❌ Hata: {str(e)}",
                                fontsize=10, color="red", verticalalignment="center")
             plt.draw()
+    
+    def run_experiment(self, event):
+        """Run experiment in background thread."""
+        if self.experiment_running:
+            logger.warning("Experiment already running")
+            return
+        
+        # Update UI state
+        self.experiment_running = True
+        self.button_exp_run.label.set_text("Çalışıyor...")
+        self.button_exp_run.color = "lightyellow"
+        
+        # Update results area
+        self.ax_results.clear()
+        self.ax_results.axis("off")
+        self.ax_results.text(0.05, 0.5, 
+                           f"🔄 Deney çalışıyor: {self.num_scenarios} senaryo, her biri için {self.num_repetitions} tekrar...",
+                           fontsize=9, verticalalignment="center")
+        plt.draw()
+        
+        # Run in background thread
+        thread = threading.Thread(target=self._run_experiment_thread, daemon=True)
+        thread.start()
+        logger.info("Experiment thread started")
+    
+    def _run_experiment_thread(self):
+        """Run experiment in background thread."""
+        try:
+            # Import here to avoid circular imports
+            import sys
+            from datetime import datetime
+            from pathlib import Path
+            
+            # Get project root
+            current_file = Path(__file__)
+            project_root = current_file.parent.parent.parent.parent
+            sys.path.insert(0, str(project_root))
+            
+            from experiments.experiment_runner import ExperimentRunner, save_results_to_json
+            from experiments.scenario_generator import generate_scenarios_for_experiment
+            
+            # Normalize weights
+            self.update_weights(0.0)
+            weights = (self.weight_delay, self.weight_reliability, self.weight_resource)
+            
+            # Update progress
+            self.experiment_progress = "Senaryolar oluşturuluyor..."
+            self._update_experiment_status()
+            
+            # Generate scenarios
+            scenarios = generate_scenarios_for_experiment(
+                graph=self.graph,
+                num_scenarios=self.num_scenarios,
+                seed=self.seed
+            )
+            
+            # Update progress
+            self.experiment_progress = f"{len(scenarios)} senaryo çalıştırılıyor..."
+            self._update_experiment_status()
+            
+            # Run experiments
+            runner = ExperimentRunner(
+                graph=self.graph,
+                weights=weights,
+                num_repetitions=self.num_repetitions
+            )
+            
+            results = runner.run_all_scenarios(
+                scenarios=scenarios,
+                algorithms=["GA", "ACO"]
+            )
+            
+            # Calculate statistics
+            success_count = sum(1 for r in results if r.success)
+            total_count = len(results)
+            success_rate = (success_count / total_count * 100) if total_count > 0 else 0
+            
+            # Save results
+            output_dir = project_root / "experiments" / "results"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            results_file = output_dir / f"results_{timestamp}.json"
+            
+            save_results_to_json(results, str(results_file))
+            
+            # Update UI with results
+            self.experiment_progress = f"✅ Tamamlandı! Başarı: {success_count}/{total_count} ({success_rate:.1f}%)"
+            self._update_experiment_status(f"Sonuçlar kaydedildi: {results_file.name}")
+            
+        except Exception as e:
+            logger.error("Error running experiment: %s", e, exc_info=True)
+            self.experiment_progress = f"❌ Hata: {str(e)}"
+            self._update_experiment_status("Deney başarısız oldu")
+        finally:
+            self.experiment_running = False
+            self.button_exp_run.label.set_text("Deneyi Çalıştır")
+            self.button_exp_run.color = "lightgreen"
+            plt.draw()
+    
+    def _update_experiment_status(self, extra_info: str = ""):
+        """Update experiment status in UI."""
+        try:
+            self.ax_results.clear()
+            self.ax_results.axis("off")
+            status_text = self.experiment_progress
+            if extra_info:
+                status_text += f"\n{extra_info}"
+            self.ax_results.text(0.05, 0.5, status_text,
+                               fontsize=8, verticalalignment="center", family="monospace")
+            plt.draw()
+        except Exception as e:
+            logger.error("Error updating experiment status: %s", e)
+    
+    def open_experiment_ui(self, event):
+        """Experiment UI'yi aç (ayrı pencere)."""
+        logger.info("Opening Experiment UI")
+        plt.close(self.fig)
+        
+        # Experiment UI'yi import et ve başlat
+        from src.ui.experiment_ui import run_experiment_ui
+        run_experiment_ui(self.graph, self.seed)
     
     def run(self):
         """Start the interactive UI."""

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Development mode - with volume mounts for hot reload
   routing-dev:
@@ -79,4 +77,90 @@ services:
     command: python run_ui.py
     profiles:
       - ui
+
+  # Web mode - FastAPI web server
+  routing-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bsm307-routing-web
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONPATH=/app
+      - PORT=8000
+      - HOST=0.0.0.0
+      - EXPERIMENT_SEED=42
+      - NUM_NODES=250
+      - EDGE_PROB=0.4
+    ports:
+      - "8001:8000"  # Host port: 8001, Container port: 8000
+    entrypoint: []  # Entrypoint'i devre dışı bırak
+    command: python run_web.py  # Web server'ı başlat
+    stdin_open: true
+    tty: true
+    profiles:
+      - web
+
+  # Experiment mode - Run experiments (quick test)
+  routing-experiment-quick:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bsm307-routing-experiment-quick
+    volumes:
+      - .:/app
+      - ./experiments/results:/app/experiments/results  # Results mount
+    environment:
+      - PYTHONPATH=/app
+      - MPLBACKEND=Agg  # Headless mode
+      - EXPERIMENT_SEED=42
+      - NUM_NODES=250
+      - EDGE_PROB=0.4
+    entrypoint: []  # Entrypoint'i devre dışı bırak
+    command: python experiments/run_experiments.py --num-scenarios 2 --repetitions 1
+    profiles:
+      - experiment-quick
+
+  # Experiment mode - Run full experiments (PDF requirements)
+  routing-experiment-full:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bsm307-routing-experiment-full
+    volumes:
+      - .:/app
+      - ./experiments/results:/app/experiments/results  # Results mount
+    environment:
+      - PYTHONPATH=/app
+      - MPLBACKEND=Agg  # Headless mode
+      - EXPERIMENT_SEED=42
+      - NUM_NODES=250
+      - EDGE_PROB=0.4
+    entrypoint: []  # Entrypoint'i devre dışı bırak
+    command: python experiments/run_experiments.py --num-scenarios 20 --repetitions 5
+    profiles:
+      - experiment-full
+
+  # Experiment mode - Interactive experiment runner (custom args)
+  routing-experiment:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bsm307-routing-experiment
+    volumes:
+      - .:/app
+      - ./experiments/results:/app/experiments/results  # Results mount
+    environment:
+      - PYTHONPATH=/app
+      - MPLBACKEND=Agg  # Headless mode
+      - EXPERIMENT_SEED=42
+      - NUM_NODES=250
+      - EDGE_PROB=0.4
+    entrypoint: []  # Entrypoint'i devre dışı bırak
+    command: python experiments/run_experiments.py  # Default: full experiment
+    stdin_open: true
+    tty: true
+    profiles:
+      - experiment
 

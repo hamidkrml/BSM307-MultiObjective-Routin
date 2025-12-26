@@ -85,6 +85,8 @@ class AntColonyOptimizer:
         Heuristik: 1 / (delay + resource_cost)
         Düşük delay ve resource cost = yüksek heuristik değer
         
+        Bandwidth penalty: Yetersiz bandwidth'li edge'ler için çok düşük heuristik
+        
         Args:
             u: Başlangıç düğümü
             v: Hedef düğümü
@@ -98,6 +100,12 @@ class AntColonyOptimizer:
         edge_data = self.graph.edges[u, v]
         delay = edge_data.get("delay", 15.0)  # Default: max delay
         bandwidth = edge_data.get("bandwidth", 100.0)  # Default: min bandwidth
+        
+        # Bandwidth penalty: Yetersiz bandwidth için çok düşük heuristik
+        if bandwidth < self.required_bandwidth:
+            # Yetersiz bandwidth'li edge'lere çok küçük heuristik değer ver
+            # Böylece seçilme olasılıkları çok düşük olur
+            return 0.0001  # Çok küçük ama sıfır değil (fallback durumunda seçilebilir)
         
         # Resource cost: 1 / bandwidth (Gbps)
         bandwidth_gbps = bandwidth / 1000.0
@@ -116,6 +124,8 @@ class AntColonyOptimizer:
         
         Olasılık: P(u,v) = [τ(u,v)]^α * [η(u,v)]^β / Σ
         
+        Bandwidth filtresi: Sadece yeterli bandwidth'e sahip edge'ler seçilir.
+        
         Args:
             current: Mevcut düğüm
             visited: Ziyaret edilmiş düğümler (döngü önleme)
@@ -123,10 +133,27 @@ class AntColonyOptimizer:
         Returns:
             Seçilen sonraki düğüm veya None
         """
+        # Önce ziyaret edilmemiş komşuları filtrele
         neighbors = [n for n in self.graph.neighbors(current) if n not in visited]
         
-        if not neighbors:
+        # Bandwidth filtresi: Sadece yeterli bandwidth'e sahip edge'leri dahil et
+        valid_neighbors = []
+        for neighbor in neighbors:
+            if self.graph.has_edge(current, neighbor):
+                edge_bandwidth = self.graph.edges[current, neighbor].get("bandwidth", 0.0)
+                if edge_bandwidth >= self.required_bandwidth:
+                    valid_neighbors.append(neighbor)
+        
+        # Eğer hiçbir geçerli komşu yoksa, bandwidth filtresini kaldır (fallback)
+        # Çünkü belki hiçbir edge yeterli bandwidth'e sahip değilse bile bir path bulmalıyız
+        if not valid_neighbors:
+            # Tüm komşuları kullan (bandwidth kontrolü path validation'da yapılacak)
+            valid_neighbors = neighbors
+        
+        if not valid_neighbors:
             return None
+        
+        neighbors = valid_neighbors  # Filtrelenmiş komşuları kullan
         
         # Her komşu için olasılık hesapla
         probabilities = []
@@ -217,9 +244,13 @@ class AntColonyOptimizer:
                self.validator.has_capacity(path, self.required_bandwidth):
                 return path
         
-        # Son çare: shortest path
+        # Son çare: shortest path (bandwidth kontrolü olmadan)
         if nx.has_path(self.graph, self.source, self.target):
-            return nx.shortest_path(self.graph, self.source, self.target)
+            fallback_path = nx.shortest_path(self.graph, self.source, self.target)
+            # Bandwidth kontrolü yap, geçersizse bile döndür (en azından bir path var)
+            if self.validator.is_simple_path(fallback_path):
+                # Bandwidth kontrolü yapmadan döndür (path repair sonrası kontrol edilecek)
+                return fallback_path
         
         return None
 
@@ -227,21 +258,33 @@ class AntColonyOptimizer:
         """
         Path için toplam maliyet hesapla (fitness benzeri).
         
+        GA algoritması ile tutarlı yaklaşım: Geçersiz path'ler için
+        float("inf") döndürülür, geçerli path'ler için weighted sum.
+        
         Args:
             path: Path (düğüm listesi)
             
         Returns:
             Toplam maliyet (düşük = iyi)
         """
+        # Geçersiz path'ler için sonsuz maliyet (GA ile tutarlı)
         if not self.validator.is_simple_path(path) or \
            not self.validator.has_capacity(path, self.required_bandwidth):
             return float("inf")
         
+        # Metrikleri hesapla
         delay = total_delay(graph=self.graph, path=path)
         rel_cost = reliability_cost(graph=self.graph, path=path)
         res_cost = bandwidth_cost(graph=self.graph, path=path)
         
+        # Ağırlıklı toplam (penalty yok, direkt cost)
         cost = weighted_sum(delay, rel_cost, res_cost, self.weights)
+        
+        logger.debug(
+            "Path cost: delay=%.2f, rel=%.4f, res=%.4f, total=%.4f",
+            delay, rel_cost, res_cost, cost
+        )
+        
         return cost
 
     def run(self, iterations: int = 50) -> Tuple[List[int], float]:

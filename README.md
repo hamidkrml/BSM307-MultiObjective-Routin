@@ -58,6 +58,9 @@ Kurulum
    
    # Interactive UI mode (XQuartz gerekli - Mac)
    docker-compose --profile ui up
+   
+   # Web server mode (FastAPI - http://localhost:8001)
+   docker-compose --profile web up
    ```
 
 3) Detaylı Docker dokümantasyonu için: `docker/README.md`

@@ -185,8 +185,8 @@ python experiments/result_analyzer.py
 
 ## 👥 Grup Bilgileri
 
-**Grup Numarası:** [Grup numaranızı yazın]  
-**Bölüm:** Bilgisayar Mühendisliği, BTBS
+ 
+**Bölüm:** BTBS
 
 ### Grup Üyeleri
 

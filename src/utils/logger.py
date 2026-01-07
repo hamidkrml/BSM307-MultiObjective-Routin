@@ -21,4 +21,3 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
     """Tutarlı logger üretir."""
     configure_root_logger()
     return logging.getLogger(name)
-

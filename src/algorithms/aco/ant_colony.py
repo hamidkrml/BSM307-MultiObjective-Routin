@@ -354,4 +354,3 @@ class AntColonyOptimizer:
         
         logger.info("ACO completed. Best cost: %.4f, path: %s", best_cost, best_path)
         return best_path, best_cost
-

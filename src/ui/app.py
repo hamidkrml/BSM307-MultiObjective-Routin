@@ -274,9 +274,15 @@ class RoutingUI:
             self.weight_delay /= total
             self.weight_reliability /= total
             self.weight_resource /= total
+        else:
+            # If all weights are 0, use default equal weights
+            self.weight_delay = 0.333
+            self.weight_reliability = 0.333
+            self.weight_resource = 0.334
+            logger.warning("All weights are 0, using default equal weights")
         
-        logger.debug("Weights updated: delay=%.2f, rel=%.2f, res=%.2f",
-                    self.weight_delay, self.weight_reliability, self.weight_resource)
+        logger.info("Weights updated from sliders: delay=%.3f, rel=%.3f, res=%.3f (normalized)",
+                   self.weight_delay, self.weight_reliability, self.weight_resource)
     
     def calculate_path(self, event):
         """
@@ -292,6 +298,10 @@ class RoutingUI:
         self.update_weights(0.0)
         weights = (self.weight_delay, self.weight_reliability, self.weight_resource)
         
+        # Log weights to verify they're being used
+        logger.info("Using weights: delay=%.3f, reliability=%.3f, resource=%.3f", 
+                   weights[0], weights[1], weights[2])
+        
         # Check if path exists
         if not nx.has_path(self.graph, self.source, self.target):
             self.ax_results.clear()
@@ -303,6 +313,13 @@ class RoutingUI:
         
         # Run algorithm
         try:
+            # Use seed based on weights to ensure different weights produce different results
+            # but same weights produce reproducible results
+            import hashlib
+            weights_str = f"{weights[0]:.3f}_{weights[1]:.3f}_{weights[2]:.3f}"
+            seed_hash = int(hashlib.md5(weights_str.encode()).hexdigest()[:8], 16) % 10000
+            current_seed = seed_hash if self.seed is None else (self.seed + seed_hash) % 10000
+            
             if self.algorithm == "GA":
                 ga = GeneticAlgorithm(
                     graph=self.graph,
@@ -311,9 +328,9 @@ class RoutingUI:
                     weights=weights,
                     required_bandwidth=self.required_bandwidth,
                     population_size=20,
-                    seed=self.seed
+                    seed=current_seed
                 )
-                path, cost = ga.run(generations=10)
+                path, cost = ga.run(generations=50)  # Increased generations
             else:  # ACO
                 aco = AntColonyOptimizer(
                     graph=self.graph,
@@ -321,10 +338,10 @@ class RoutingUI:
                     target=self.target,
                     weights=weights,
                     required_bandwidth=self.required_bandwidth,
-                    num_ants=15,
-                    seed=self.seed
+                    num_ants=30,  # Increased ants
+                    seed=current_seed
                 )
-                path, cost = aco.run(iterations=10)
+                path, cost = aco.run(iterations=30)  # Increased iterations
             
             # Calculate metrics
             delay = total_delay(graph=self.graph, path=path)

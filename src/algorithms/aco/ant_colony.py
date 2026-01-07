@@ -74,16 +74,17 @@ class AntColonyOptimizer:
             random.seed(seed)
         
         logger.info(
-            "Initialized AntColonyOptimizer: source=%s, target=%s, alpha=%.2f, beta=%.2f, ants=%s",
-            source, target, alpha, beta, num_ants
+            "Initialized AntColonyOptimizer: source=%s, target=%s, weights=(%.2f, %.2f, %.2f), alpha=%.2f, beta=%.2f, ants=%s",
+            source, target, weights[0], weights[1], weights[2], alpha, beta, num_ants
         )
 
     def _heuristic_value(self, u: int, v: int) -> float:
         """
         Edge (u, v) için heuristik değer hesapla.
         
-        Heuristik: 1 / (delay + resource_cost)
-        Düşük delay ve resource cost = yüksek heuristik değer
+        Ağırlıklı maliyet kullanarak heuristik hesaplar:
+        weighted_cost = w_delay * delay + w_reliability * (-log(reliability)) + w_resource * resource_cost
+        heuristic = 1 / weighted_cost (düşük maliyet = yüksek heuristik)
         
         Bandwidth penalty: Yetersiz bandwidth'li edge'ler için çok düşük heuristik
         
@@ -100,6 +101,7 @@ class AntColonyOptimizer:
         edge_data = self.graph.edges[u, v]
         delay = edge_data.get("delay", 15.0)  # Default: max delay
         bandwidth = edge_data.get("bandwidth", 100.0)  # Default: min bandwidth
+        reliability = edge_data.get("reliability", 0.99)  # Default: high reliability
         
         # Bandwidth penalty: Yetersiz bandwidth için çok düşük heuristik
         if bandwidth < self.required_bandwidth:
@@ -107,14 +109,21 @@ class AntColonyOptimizer:
             # Böylece seçilme olasılıkları çok düşük olur
             return 0.0001  # Çok küçük ama sıfır değil (fallback durumunda seçilebilir)
         
+        # Ağırlıkları al
+        wd, wr, wc = self.weights
+        
         # Resource cost: 1 / bandwidth (Gbps)
         bandwidth_gbps = bandwidth / 1000.0
         resource_cost = 1.0 / bandwidth_gbps if bandwidth_gbps > 0 else float("inf")
         
-        # Heuristik: 1 / (delay + resource_cost)
-        # Düşük delay ve resource = yüksek heuristik
-        total_cost = delay + resource_cost
-        heuristic = 1.0 / total_cost if total_cost > 0 else 0.0
+        # Reliability cost: -log(reliability) (tek edge için)
+        rel_cost = -math.log(reliability) if reliability > 0 else float("inf")
+        
+        # Ağırlıklı maliyet hesapla (path cost ile tutarlı)
+        weighted_cost = wd * float(delay) + wr * float(rel_cost) + wc * float(resource_cost)
+        
+        # Heuristik: 1 / weighted_cost (düşük maliyet = yüksek heuristik)
+        heuristic = 1.0 / weighted_cost if weighted_cost > 0 else 0.0
         
         return heuristic
 
@@ -281,8 +290,8 @@ class AntColonyOptimizer:
         cost = weighted_sum(delay, rel_cost, res_cost, self.weights)
         
         logger.debug(
-            "Path cost: delay=%.2f, rel=%.4f, res=%.4f, total=%.4f",
-            delay, rel_cost, res_cost, cost
+            "Path cost: delay=%.2f (w=%.3f) + rel=%.4f (w=%.3f) + res=%.4f (w=%.3f) = total=%.4f",
+            delay, self.weights[0], rel_cost, self.weights[1], res_cost, self.weights[2], cost
         )
         
         return cost
@@ -303,7 +312,8 @@ class AntColonyOptimizer:
         Returns:
             (best_path, best_cost) tuple
         """
-        logger.info("Running ACO for %s iterations with %s ants", iterations, self.num_ants)
+        logger.info("Running ACO for %s iterations with %s ants, weights=(%.3f, %.3f, %.3f)", 
+                   iterations, self.num_ants, self.weights[0], self.weights[1], self.weights[2])
         
         best_path = None
         best_cost = float("inf")

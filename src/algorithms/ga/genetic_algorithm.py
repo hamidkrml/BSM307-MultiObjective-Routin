@@ -5,6 +5,7 @@ BSM307 - Güz 2025
 Issue #9, #10, #11, #12: Complete GA implementation
 """
 
+import math
 import random
 from typing import List, Optional, Sequence, Tuple
 
@@ -91,7 +92,7 @@ class GeneticAlgorithm:
         logger.debug("Initializing population size=%s", pop_size)
         
         population = []
-        max_attempts = pop_size * 10  # Her path için maksimum deneme sayısı
+        max_attempts = pop_size * 50  # Artırıldı: Her path için daha fazla deneme
         
         # 1. Shortest path'i ekle (deterministic, iyi başlangıç)
         if nx.has_path(self.graph, self.source, self.target):
@@ -103,23 +104,111 @@ class GeneticAlgorithm:
             except nx.NetworkXNoPath:
                 pass
         
-        # 2. Rastgele path'ler üret
+        # 2. Weighted shortest paths ekle (ağırlıklara göre farklı path'ler)
+        wd, wr, wc = self.weights
+        unique_paths = set(tuple(p) for p in population)  # Duplicate kontrolü için set
+        
+        if len(population) < pop_size:
+            # Delay ağırlığı yüksekse, delay-weighted path ekle
+            if wd > 0.3:
+                try:
+                    delay_path = nx.shortest_path(
+                        self.graph, self.source, self.target, 
+                        weight="delay"
+                    )
+                    if self._is_valid_path(delay_path):
+                        path_tuple = tuple(delay_path)
+                        if path_tuple not in unique_paths:
+                            population.append(delay_path)
+                            unique_paths.add(path_tuple)
+                            logger.debug("Added delay-weighted path to population")
+                except (nx.NetworkXNoPath, KeyError):
+                    pass
+            
+            # Resource ağırlığı yüksekse, bandwidth-weighted path ekle (yüksek bandwidth = düşük cost)
+            if wc > 0.3:
+                try:
+                    # Bandwidth'e göre path bulmak için edge weight'i 1/bandwidth yap
+                    G_weighted = self.graph.copy()
+                    for u, v in G_weighted.edges():
+                        bw = G_weighted.edges[u, v].get("bandwidth", 100.0)
+                        # Yüksek bandwidth = düşük weight (ters çevir)
+                        G_weighted.edges[u, v]["bw_weight"] = 1000.0 / max(bw, 1.0)
+                    
+                    bw_path = nx.shortest_path(
+                        G_weighted, self.source, self.target,
+                        weight="bw_weight"
+                    )
+                    if self._is_valid_path(bw_path):
+                        path_tuple = tuple(bw_path)
+                        if path_tuple not in unique_paths:
+                            population.append(bw_path)
+                            unique_paths.add(path_tuple)
+                            logger.debug("Added bandwidth-weighted path to population")
+                except (nx.NetworkXNoPath, KeyError):
+                    pass
+            
+            # Reliability ağırlığı yüksekse, reliability-weighted path ekle
+            if wr > 0.3:
+                try:
+                    # Reliability'e göre path bulmak için edge weight'i -log(reliability) yap
+                    G_weighted = self.graph.copy()
+                    for u, v in G_weighted.edges():
+                        rel = G_weighted.edges[u, v].get("reliability", 0.99)
+                        G_weighted.edges[u, v]["rel_weight"] = -math.log(max(rel, 0.01))
+                    
+                    rel_path = nx.shortest_path(
+                        G_weighted, self.source, self.target,
+                        weight="rel_weight"
+                    )
+                    if self._is_valid_path(rel_path):
+                        path_tuple = tuple(rel_path)
+                        if path_tuple not in unique_paths:
+                            population.append(rel_path)
+                            unique_paths.add(path_tuple)
+                            logger.debug("Added reliability-weighted path to population")
+                except (nx.NetworkXNoPath, KeyError):
+                    pass
+        
+        # 3. Rastgele path'ler üret (ağırlıklara göre bias ile)
         attempts = 0
+        
         while len(population) < pop_size and attempts < max_attempts:
             attempts += 1
             path = self._generate_random_path()
             
             if path is not None and self._is_valid_path(path):
+                path_tuple = tuple(path)
                 # Duplicate kontrolü
-                if path not in population:
+                if path_tuple not in unique_paths:
                     population.append(path)
-                    logger.debug("Added random path %s to population", path)
+                    unique_paths.add(path_tuple)
+                    logger.debug("Added random path %s to population (attempt %s)", 
+                               path[:5] if len(path) > 5 else path, attempts)
         
         if len(population) < pop_size:
             logger.warning(
-                "Could only generate %s valid paths (requested %s)",
-                len(population), pop_size
+                "Could only generate %s valid paths (requested %s) after %s attempts",
+                len(population), pop_size, attempts
             )
+            # Eğer çok az path bulunduysa, mevcut path'leri çoğaltarak popülasyonu doldur
+            if len(population) > 0:
+                logger.info("Duplicating and mutating existing paths to fill population")
+                fill_attempts = 0
+                max_fill_attempts = pop_size * 20
+                while len(population) < pop_size and fill_attempts < max_fill_attempts:
+                    fill_attempts += 1
+                    # Mevcut path'lerden birini seç ve mutate et
+                    base_path = random.choice(population)
+                    mutated = self._mutate(base_path.copy())
+                    if self._is_valid_path(mutated):
+                        path_tuple = tuple(mutated)
+                        if path_tuple not in unique_paths:
+                            population.append(mutated)
+                            unique_paths.add(path_tuple)
+                        elif len(population) < 5:
+                            # Çok küçük popülasyonlar için duplicate'leri de kabul et
+                            population.append(mutated)
         
         logger.info("Initialized population with %s valid paths", len(population))
         return population
@@ -127,11 +216,12 @@ class GeneticAlgorithm:
     def _generate_random_path(self) -> Optional[List[int]]:
         """
         Rastgele bir path üret (DFS veya random walk kullanarak).
+        Bandwidth kontrolü yaparak sadece geçerli edge'leri seçer.
         
         Returns:
             Geçerli path veya None
         """
-        # Random walk stratejisi
+        # Random walk stratejisi - bandwidth filtresi ile
         path = [self.source]
         visited = {self.source}
         max_length = self.graph.number_of_nodes()  # Sonsuz döngüyü önle
@@ -141,12 +231,23 @@ class GeneticAlgorithm:
             if current == self.target:
                 return path
             
-            # Rastgele komşu seç
+            # Rastgele komşu seç - sadece yeterli bandwidth'e sahip edge'ler
             neighbors = list(self.graph.neighbors(current))
-            unvisited_neighbors = [n for n in neighbors if n not in visited]
+            # Bandwidth filtresi: sadece yeterli bandwidth'e sahip edge'leri dahil et
+            valid_neighbors = []
+            for neighbor in neighbors:
+                if neighbor not in visited:
+                    if self.graph.has_edge(current, neighbor):
+                        edge_bandwidth = self.graph.edges[current, neighbor].get("bandwidth", 0.0)
+                        if edge_bandwidth >= self.required_bandwidth:
+                            valid_neighbors.append(neighbor)
             
-            if not unvisited_neighbors:
-                # Tüm komşular ziyaret edilmiş, backtrack yap
+            # Eğer hiçbir geçerli komşu yoksa, bandwidth filtresini kaldır (fallback)
+            if not valid_neighbors:
+                valid_neighbors = [n for n in neighbors if n not in visited]
+            
+            if not valid_neighbors:
+                # Tüm komşular ziyaret edilmiş veya geçersiz, backtrack yap
                 if len(path) > 1:
                     path.pop()
                     visited.remove(current)
@@ -155,7 +256,51 @@ class GeneticAlgorithm:
                 else:
                     return None  # Yol bulunamadı
             
-            next_node = random.choice(unvisited_neighbors)
+            # Ağırlıklara göre komşu seçimi (bias)
+            wd, wr, wc = self.weights
+            if len(valid_neighbors) > 1:
+                # Her komşu için ağırlıklı skor hesapla
+                neighbor_scores = []
+                for neighbor in valid_neighbors:
+                    if self.graph.has_edge(current, neighbor):
+                        edge_data = self.graph.edges[current, neighbor]
+                        delay = edge_data.get("delay", 15.0)
+                        bandwidth = edge_data.get("bandwidth", 100.0)
+                        reliability = edge_data.get("reliability", 0.99)
+                        
+                        # Resource cost: 1 / bandwidth (Gbps)
+                        bandwidth_gbps = bandwidth / 1000.0
+                        resource_cost = 1.0 / bandwidth_gbps if bandwidth_gbps > 0 else float("inf")
+                        
+                        # Reliability cost: -log(reliability)
+                        rel_cost = -math.log(reliability) if reliability > 0 else float("inf")
+                        
+                        # Ağırlıklı maliyet (düşük = iyi)
+                        weighted_cost = wd * delay + wr * rel_cost + wc * resource_cost
+                        
+                        # Score: 1 / cost (yüksek = iyi)
+                        score = 1.0 / weighted_cost if weighted_cost > 0 else 0.0
+                        neighbor_scores.append((neighbor, score))
+                
+                # Weighted random selection (scores'a göre)
+                total_score = sum(score for _, score in neighbor_scores)
+                if total_score > 0:
+                    r = random.random() * total_score
+                    cumulative = 0.0
+                    for neighbor, score in neighbor_scores:
+                        cumulative += score
+                        if r <= cumulative:
+                            next_node = neighbor
+                            break
+                    else:
+                        next_node = neighbor_scores[-1][0]  # Fallback
+                else:
+                    next_node = random.choice(valid_neighbors)
+            else:
+                next_node = valid_neighbors[0] if valid_neighbors else None
+            
+            if next_node is None:
+                return None
             path.append(next_node)
             visited.add(next_node)
             current = next_node
@@ -210,13 +355,7 @@ class GeneticAlgorithm:
 
     def run(self, generations: int = 100) -> Tuple[List[int], float]:
         """
-        Issue #12: GA ana döngüsü (selection, crossover, mutation, replacement).
         
-        Args:
-            generations: Generasyon sayısı
-            
-        Returns:
-            (best_path, best_fitness) tuple
         """
         logger.info("Running GA for %s generations", generations)
         
@@ -233,15 +372,34 @@ class GeneticAlgorithm:
         best_path = population[best_idx]
         best_fitness = fitnesses[best_idx]
         
-        logger.info("Initial best fitness: %.4f (path length: %s)", best_fitness, len(best_path))
+        logger.info("Initial best fitness: %.4f (path length: %s, population size: %s)", 
+                   best_fitness, len(best_path), len(population))
+        
+        # Küçük popülasyonlar için mutation rate'i artır
+        adaptive_mutation_rate = self.mutation_rate
+        if len(population) < 10:
+            adaptive_mutation_rate = min(0.3, self.mutation_rate * 3)  # 3x artır, max 0.3
+            logger.info("Small population detected (%s paths), increasing mutation rate to %.3f", 
+                       len(population), adaptive_mutation_rate)
         
         # Ana döngü
         for gen in range(generations):
             # Yeni popülasyon oluştur
             new_population = []
+            new_population_paths = set()  # Diversity preservation için
             
-            # Elitizm: En iyi bireyi koru
-            new_population.append(best_path)
+            # Top-k elitizm: En iyi k path'i koru (diversity için)
+            elite_size = min(5, len(population) // 10)  # Popülasyonun %10'u veya max 5
+            elite_size = max(1, elite_size)  # En az 1
+            
+            # Fitness'e göre sırala ve en iyi k path'i al
+            sorted_indices = sorted(range(len(population)), key=lambda i: fitnesses[i])
+            for idx in sorted_indices[:elite_size]:
+                elite_path = population[idx]
+                path_tuple = tuple(elite_path)
+                if path_tuple not in new_population_paths:
+                    new_population.append(elite_path)
+                    new_population_paths.add(path_tuple)
             
             # Popülasyon boyutuna ulaşana kadar yeni bireyler üret
             while len(new_population) < self.population_size:
@@ -255,17 +413,23 @@ class GeneticAlgorithm:
                 else:
                     child1, child2 = parent1.copy(), parent2.copy()
                 
-                # Mutation
-                if random.random() < self.mutation_rate:
+                # Mutation (adaptive rate kullan)
+                if random.random() < adaptive_mutation_rate:
                     child1 = self._mutate(child1)
-                if random.random() < self.mutation_rate:
+                if random.random() < adaptive_mutation_rate:
                     child2 = self._mutate(child2)
                 
-                # Geçerli child'ları ekle
-                if self._is_valid_path(child1) and len(new_population) < self.population_size:
-                    new_population.append(child1)
-                if self._is_valid_path(child2) and len(new_population) < self.population_size:
-                    new_population.append(child2)
+                # Geçerli child'ları ekle (diversity kontrolü ile)
+                for child in [child1, child2]:
+                    if self._is_valid_path(child) and len(new_population) < self.population_size:
+                        child_tuple = tuple(child)
+                        # Diversity: Benzer path'leri filtrele
+                        if child_tuple not in new_population_paths:
+                            new_population.append(child)
+                            new_population_paths.add(child_tuple)
+                        elif len(new_population) < self.population_size * 0.8:
+                            # Popülasyon %80'den azsa, duplicate'leri de kabul et
+                            new_population.append(child)
             
             # Popülasyonu güncelle
             population = new_population
@@ -279,8 +443,9 @@ class GeneticAlgorithm:
                 best_path = population[current_best_idx]
                 best_fitness = current_best_fitness
                 logger.info(
-                    "Generation %s: New best fitness=%.4f (path length=%s)",
-                    gen + 1, best_fitness, len(best_path)
+                    "Generation %s: New best fitness=%.4f (path length=%s, path=%s)",
+                    gen + 1, best_fitness, len(best_path), 
+                    best_path[:8] if len(best_path) > 8 else best_path
                 )
         
         logger.info("GA completed. Best fitness: %.4f, path: %s", best_fitness, best_path)
@@ -297,19 +462,7 @@ class GeneticAlgorithm:
 
     def _crossover(self, parent1: List[int], parent2: List[int]) -> Tuple[List[int], List[int]]:
         """
-        Issue #11: İki parent path'ten yeni child path'ler üreten crossover.
         
-        Strateji: Order crossover (OX) benzeri
-        1. Parent1'den bir segment al
-        2. Parent2'den kalan düğümleri sırayla ekle
-        3. Geçerliliği kontrol et ve düzelt
-        
-        Args:
-            parent1: İlk parent path
-            parent2: İkinci parent path
-            
-        Returns:
-            (child1, child2) tuple
         """
         if len(parent1) <= 2 or len(parent2) <= 2:
             return parent1.copy(), parent2.copy()
@@ -346,12 +499,7 @@ class GeneticAlgorithm:
 
     def _mutate(self, chromosome: List[int]) -> List[int]:
         """
-        Issue #11: Path'i rastgele değiştiren mutasyon operatörü.
         
-        Strateji:
-        1. Rastgele bir düğüm seç
-        2. O düğümü farklı bir geçerli düğümle değiştir
-        3. Path geçerliliğini koru
         
         Args:
             chromosome: Mutasyona uğrayacak path
@@ -361,11 +509,49 @@ class GeneticAlgorithm:
             Mutasyona uğramış path
         """
         if len(chromosome) <= 2:
+            # Çok kısa path, düğüm eklemeyi dene
+            if len(chromosome) == 2:
+                # [source, target] -> [source, intermediate, target]
+                source, target = chromosome[0], chromosome[1]
+                # Source'un komşularından birini seç (target'a gidebilen)
+                source_neighbors = list(self.graph.neighbors(source))
+                valid_intermediates = [
+                    n for n in source_neighbors
+                    if n != target and self.graph.has_edge(n, target)
+                    and self.graph.edges[source, n].get("bandwidth", 0.0) >= self.required_bandwidth
+                    and self.graph.edges[n, target].get("bandwidth", 0.0) >= self.required_bandwidth
+                ]
+                if valid_intermediates:
+                    intermediate = random.choice(valid_intermediates)
+                    return [source, intermediate, target]
             return chromosome.copy()
         
         mutated = chromosome.copy()
         
-        # Rastgele bir pozisyon seç (source ve target hariç)
+        # Kısa path'ler için (3-4 düğüm): Düğüm ekle
+        if len(mutated) <= 4 and random.random() < 0.5:
+            # Rastgele bir pozisyona düğüm ekle
+            insert_pos = random.randint(1, len(mutated) - 1)
+            prev_node = mutated[insert_pos - 1]
+            next_node = mutated[insert_pos]
+            
+            # Prev_node'un komşularından birini seç (next_node'a gidebilen)
+            prev_neighbors = list(self.graph.neighbors(prev_node))
+            valid_insertions = [
+                n for n in prev_neighbors
+                if n != prev_node and n != next_node
+                and self.graph.has_edge(n, next_node)
+                and n not in mutated  # Döngü önleme
+                and self.graph.edges[prev_node, n].get("bandwidth", 0.0) >= self.required_bandwidth
+                and self.graph.edges[n, next_node].get("bandwidth", 0.0) >= self.required_bandwidth
+            ]
+            
+            if valid_insertions:
+                new_node = random.choice(valid_insertions)
+                mutated.insert(insert_pos, new_node)
+                return self._repair_path(mutated)
+        
+        # Normal mutation: Düğüm değiştir veya kaldır
         pos = random.randint(1, len(mutated) - 2)
         old_node = mutated[pos]
         
@@ -377,14 +563,16 @@ class GeneticAlgorithm:
         prev_neighbors = list(self.graph.neighbors(prev_node))
         valid_replacements = [
             n for n in prev_neighbors
-            if n != old_node and self.graph.has_edge(n, next_node)
+            if n != old_node and n not in mutated  # Döngü önleme
+            and self.graph.has_edge(n, next_node)
+            and self.graph.edges[prev_node, n].get("bandwidth", 0.0) >= self.required_bandwidth
+            and self.graph.edges[n, next_node].get("bandwidth", 0.0) >= self.required_bandwidth
         ]
         
         if valid_replacements:
             mutated[pos] = random.choice(valid_replacements)
         else:
-            # Geçerli değişim yok, path'i kısalt veya uzat
-            # Basit strateji: Düğümü kaldır (eğer edge varsa)
+            # Geçerli değişim yok, düğümü kaldır (eğer edge varsa)
             if self.graph.has_edge(prev_node, next_node):
                 mutated.pop(pos)
         

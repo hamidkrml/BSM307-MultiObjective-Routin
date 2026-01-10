@@ -65,8 +65,18 @@ Kurulum
 3. **Detaylı Docker dokümantasyonu için:** `DOCKER_GUIDE.md`
 
 ---
+## Docker Kullanımı
 
-## 📖 Kullanım
+Bu proje, farklı sistemlerde aynı şekilde çalıştırılabilmesi ve ortam bağımlılıklarının ortadan kaldırılması amacıyla Docker ile konteynerleştirilmiştir.
+
+Proje için oluşturulan Docker imajı GitHub Container Registry (GHCR) üzerinde yayımlanmıştır ve aşağıdaki komutlar ile çalıştırılabilir:
+
+```bash
+docker pull ghcr.io/hamidkrml/bsm307-routing:latest
+docker run ghcr.io/hamidkrml/bsm307-routing:latest
+
+
+
 
 ### Web UI (Önerilen)
 

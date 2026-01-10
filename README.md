@@ -185,8 +185,8 @@ python experiments/result_analyzer.py
 
 ## 👥 Grup Bilgileri
 
-**Grup Numarası:** [Grup numaranızı yazın]  
-**Bölüm:** Bilgisayar Mühendisliği, BTBS
+ 
+**Bölüm:** BTBS
 
 ### Grup Üyeleri
 
@@ -200,7 +200,7 @@ python experiments/result_analyzer.py
 
 ### Görev Dağılımı
 - **Hamid Karimli:** Ağ modeli, metrikler, GA, path validation, experiment runner, Docker
-- **Haydar Bayram Ov:** ACO testleri, dokümantasyon, UI görselleştirme
+- **Haydar Bayramov:** ACO testleri, dokümantasyon, UI görselleştirme
 
 ### Öğrenim Süreci
 - **NetworkX:** Graf manipülasyonu ve görselleştirme
